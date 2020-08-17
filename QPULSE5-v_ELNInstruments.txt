@@ -1,0 +1,69 @@
+USE [QPulse5]
+GO
+
+/****** Object:  View [dbo].[v_ELNInstruments]    Script Date: 08/07/2020 16:32:00 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[v_ELNInstruments] AS
+WITH Calib as
+(SELECT Due.ID, Due.Activity, Due.Period, Last.LastPerformed, Due.DueDate, datediff(DAY, Last.LastPerformed, Due.DueDate) as Interval
+FROM 
+(SELECT ei.ID, ad.ActivityTypeID, zat.Name as Activity, ai.DueDate,
+CASE WHEN ad.ActivityTypeID = 7 THEN 1 WHEN ad.ActivityTypeID = 20 THEN 2 WHEN ad.ActivityTypeID = 2 THEN 3 WHEN ad.ActivityTypeID = 5 THEN 4 WHEN ad.ActivityTypeID = 10 THEN 5 WHEN ad.ActivityTypeID = 11 THEN 6 END as Ranked,
+cast(ad.FixedValue as varchar) + ' ' + CASE ad.FixedMeasure WHEN 0 then 'None' WHEN 1 then 'Hours' WHEN 2 then 'Days' WHEN 4 THEN 'Months' WHEN 5 THEN 'Years' ELSE 'N/A' END as Period
+FROM [QPulse5].[dbo].[ActivityDefinition] ad, [QPulse5].[dbo].[ActivityItem] ai, [QPulse5].[dbo].[EquipmentItem] ei, [QPulse5].[dbo].[zActivityType] zat
+where ad.EquipmentItemID = ei.ID and ai.ActivityDefinitionID = ad.ID and ad.ActivityTypeID = zat.ID
+and ad.ActivityTypeID in (2,5,7,10,11,20) and ai.PerformedDate is null and ai.DueDate is not null
+) Due, 
+(SELECT ei.ID, ad.ActivityTypeID, max(ai.PerformedDate) as LastPerformed
+FROM [QPulse5].[dbo].[ActivityDefinition] ad, [QPulse5].[dbo].[ActivityItem] ai, [QPulse5].[dbo].[EquipmentItem] ei
+where ad.EquipmentItemID = ei.ID and ai.ActivityDefinitionID = ad.ID
+and ad.ActivityTypeID in (2,5,7,10,11,20) and ai.OutcomeID not in (11,13) group by ei.ID, ei.Number, ad.ActivityTypeID
+) Last,
+(SELECT ei.ID, min(CASE WHEN ad.ActivityTypeID = 7 THEN 1 WHEN ad.ActivityTypeID = 20 THEN 2 WHEN ad.ActivityTypeID = 2 THEN 3 WHEN ad.ActivityTypeID = 5 THEN 4 WHEN ad.ActivityTypeID = 10 THEN 5 WHEN ad.ActivityTypeID = 11 THEN 6 END) as Ranked
+FROM [QPulse5].[dbo].[ActivityDefinition] ad, [QPulse5].[dbo].[ActivityItem] ai, [QPulse5].[dbo].[EquipmentItem] ei
+where ad.EquipmentItemID = ei.ID and ai.ActivityDefinitionID = ad.ID
+and ad.ActivityTypeID in (2,5,7,10,11,20) and ai.PerformedDate is null and ai.DueDate is not null
+group by ei.ID
+) Ranking
+WHERE Due.ID = Last.ID 
+and Due.ActivityTypeID = Last.ActivityTypeID
+and Due.ID = Ranking.ID
+and Due.Ranked = Ranking.Ranked
+) 
+SELECT ei.Number as Asset,
+LEFT(REPLACE(ei.Description,CHAR(13)+CHAR(10),' '),150) Description,
+yeit.Name as EquipmentType,
+/*ei.SerialNumber,*/
+yd.Name as Department,
+p.UserName as Owner,
+zm.Name as Manufacturer,
+yeil.Name as Location,
+case when ei.isAvailable = 1 then 'T' else 'F' end as Online,
+ei.UserDefinedField7 as GMP,
+Calib.Activity, 
+Calib.Period, 
+Calib.LastPerformed, 
+Calib.DueDate, 
+Calib.Interval,
+datediff(DAY, GETDATE(), Calib.DueDate)-1 DaysToDue
+FROM [QPulse5].[dbo].[yEquipmentItemType] yeit,
+[QPulse5].[dbo].[EquipmentItem] ei
+left outer join [QPulse5].[dbo].[yDepartment] yd on ei.DepartmentID = yd.ID
+left outer join [QPulse5].[dbo].[Person] p on ei.OwnerPersonID = p.ID
+left outer join [QPulse5].[dbo].[zManufacturer] zm on ei.ManufacturerID = zm.ID
+left outer join [QPulse5].[dbo].[yEquipmentItemLocation] yeil on ei.EquipmentItemLocationID = yeil.ID
+left outer join Calib on ei.ID = Calib.ID
+where 
+ei.EquipmentItemTypeID=yeit.ID
+and yeit.Name != 'Method';
+
+
+
+
+GO
+

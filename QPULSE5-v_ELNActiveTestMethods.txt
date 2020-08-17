@@ -1,0 +1,31 @@
+USE [QPulse5]
+GO
+
+/****** Object:  View [dbo].[v_ELNActiveTestMethods]    Script Date: 08/07/2020 16:32:36 ******/
+SET ANSI_NULLS ON
+GO
+
+SET QUOTED_IDENTIFIER ON
+GO
+
+CREATE VIEW [dbo].[v_ELNActiveTestMethods] AS
+SELECT
+	doc.Number as TestMethod, 
+	rev.title as DocumentTitle, 
+	rev.RevisionReference as Issue,
+	CONVERT(varchar, rev.ActiveDate, 103) as EffectiveDate,
+	p.UserName,
+	CONVERT(varchar, ch.NotifiedDate, 103) as NotifiedDate,
+	CONVERT(varchar, ch.AcknowledgedDate, 103) as AcknowledgedDate,
+	ch.NotifiedDate as NotifiedDateTime
+FROM 
+	dbo.CopyHolder ch 
+	join dbo.Revision rev on ch.RevisionID = rev.ID
+	join dbo.Document doc on doc.ID = rev.DocumentID
+	join dbo.Person p on p.ID = ch.PersonID
+WHERE
+	ch.CopyTypeID = 1 /*Electronic copies only*/
+	and doc.DocumentTypeID = 6 /*DocumentType = Test Method*/
+	and rev.StatusID = 2 /*Status = Active*/
+GO
+
